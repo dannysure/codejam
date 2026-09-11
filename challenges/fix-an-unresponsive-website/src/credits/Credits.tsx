@@ -1,4 +1,14 @@
+import {useEffect, useRef} from "react";
+
 const Credits = () => {
+    const isMountedRef = useRef(true);
+
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, []);
 
     const credits = [
         {name: "John", role: "developer"},
