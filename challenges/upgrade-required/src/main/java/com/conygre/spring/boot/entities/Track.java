@@ -5,7 +5,7 @@
 // is accessed by the pages
 
 package com.conygre.spring.boot.entities;
-import javax.persistence.*;
+import jakarta.persistence.*;
 
 
 import java.io.Serializable;
