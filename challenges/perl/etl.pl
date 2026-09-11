@@ -1,7 +1,7 @@
 #!/usr/bin/perl
-use File::Copy; # Import file copy module (though not used in this script)
+use File::Copy; # Import file copy module
 
-# Database table configuration
+# Configure the namws of the databases
 $TABLE_NAME = "nasdaq_prices"; # Name of the table to create
 $DATABASE_ENGINE = "InnoDB"; # MySQL storage engine
 $DEFAULT_CHARSET = "latin1"; # Character encoding
@@ -9,14 +9,17 @@ $DEFAULT_CHARSET = "latin1"; # Character encoding
 
 $filename = "prices.csv"; # Input CSV file to process
 
-# Open output files for writing
-open(TABLE, ">mysqlCreateSchema.sql") || die "Failed to redirect output"; # File for CREATE TABLE
-open(VALUES, ">mysqlInsertValues.sql") || die "Failed to redirect output"; # File for INSERT statements
+# Now we'll open the tables
 
+# File for CREATE TABLE
+open(TABLE, ">mysqlCreateSchema.sql") || die "Failed to redirect output";
+# File for INSERT statements
+open(VALUES, ">mysqlInsertValues.sql") || die "Failed to redirect output";
 
-$count = 0; # Counter for processed rows
+# Counts processed rows
+$count = 0;
 
-# String to store comma-separated column names for INSERT statements
+# Stores comma-separated column names for the INSERT statements
 $Columns_Values = "";
 
 # Open input CSV file for reading
@@ -25,9 +28,9 @@ open FILE, "$filename" or die $!;
 # Read the first line (header row) from the CSV file
 my $columns = <FILE>; # Read the first line (header row)
 
-# Remove trailing line ending characters
-chop $columns; # Remove last character (newline)
-chop $columns; # Remove carriage return on Windows
+# Remove CRLF line ending characters (\n and \r)
+chop $columns;
+chop $columns;
 
 # Escape single quotes with backslash for SQL safety
 $columns =~ s/'/\\'/g; # Replace all ' with \'
