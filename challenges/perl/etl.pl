@@ -1,217 +1,205 @@
 #!/usr/bin/perl
-use File::Copy;
+use File::Copy; # Import file copy module (though not used in this script)
 
-$TABLE_NAME = "nasdaq_prices";
-$DATABASE_ENGINE = "InnoDB";
-$DEFAULT_CHARSET = "latin1";
-
-
-$filename = "prices.csv";
+# Database table configuration
+$TABLE_NAME = "nasdaq_prices"; # Name of the table to create
+$DATABASE_ENGINE = "InnoDB"; # MySQL storage engine
+$DEFAULT_CHARSET = "latin1"; # Character encoding
 
 
-open(TABLE, ">mysqlCreateSchema.sql") || die "Failed to redirect output";
-open(VALUES, ">mysqlInsertValues.sql") || die "Failed to redirect output";
+$filename = "prices.csv"; # Input CSV file to process
+
+# Open output files for writing
+open(TABLE, ">mysqlCreateSchema.sql") || die "Failed to redirect output"; # File for CREATE TABLE
+open(VALUES, ">mysqlInsertValues.sql") || die "Failed to redirect output"; # File for INSERT statements
 
 
-$count = 0;
+$count = 0; # Counter for processed rows
 
-
+# String to store comma-separated column names for INSERT statements
 $Columns_Values = "";
 
-
+# Open input CSV file for reading
 open FILE, "$filename" or die $!;
 
+# Read the first line (header row) from the CSV file
+my $columns = <FILE>; # Read the first line (header row)
 
-my $columns = <FILE>;
+# Remove trailing line ending characters
+chop $columns; # Remove last character (newline)
+chop $columns; # Remove carriage return on Windows
 
+# Escape single quotes with backslash for SQL safety
+$columns =~ s/'/\\'/g; # Replace all ' with \'
 
-chop $columns;
+# Remove all double quotes from column names  
+$columns =~ s/\"//; # Delete all double quote characters
+chop $columns; # Remove another trailing character
 
-chop $columns;
+# Replace spaces with underscores in column names (SQL naming convention)
+$columns =~ s/ /_/g; # Replace all spaces with underscores
 
-$columns =~ s/'/\\'/g;
+# Split the header string by commas into an array of column names
+@Field_Names = split(",",$columns); # Create array of column names
 
+# Get the index of the last element (number of columns - 1)
+$Field_Names_Count = $#Field_Names; # $# returns last index of array
 
-$columns =~ s/\"//;
+# Calculate actual number of columns
+$Field_Names_Count_Plus_One = $Field_Names_Count + 1; # Total column count
 
-chop $columns;
+# Initialize counter for iterating through fields
+$field_count = 0; # Counter for current field being processed
 
-
-$columns =~ s/ /_/g;
-
-
-
-@Field_Names = split(",",$columns);
-
-
-$Field_Names_Count = $#Field_Names;
-
-$Field_Names_Count_Plus_One = $Field_Names_Count + 1;
-
-
-$field_count = 0;
-
-
-if ($count == 0)
-
+# Build the column list string for INSERT statements (only done once)
+if ($count == 0) # Check if this is the first iteration
 {
+$column_count = 0; # Initialize column counter for header processing
 
-$column_count = 0;
-
-   while ($column_count <= $Field_Names_Count)
-   
+   while ($column_count <= $Field_Names_Count) # Loop through all columns
    {
-      if ($column_count < $Field_Names_Count)
-   
+      if ($column_count < $Field_Names_Count) # If not the last column
       {
-         $Columns_Values = $Columns_Values . $Field_Names[$column_count] . ", ";
+         # Append column name with comma separator
+         $Columns_Values = $Columns_Values . $Field_Names[$column_count] . ", "; # Add column name then comma
       }
       
-      
-      if ($column_count == $Field_Names_Count)
-   
+      # For the last column, don't add comma separator
+      if ($column_count == $Field_Names_Count) # If this is the last column
       {
-         $Columns_Values = $Columns_Values . $Field_Names[$column_count];
+         # Append the last column name without comma
+         $Columns_Values = $Columns_Values . $Field_Names[$column_count]; # Add final column
       }
 
-      $column_count++;
-   }
-   
+      $column_count++; # Move to next column
+   } # End of column building loop
 
-}
+} # End header processing
 
-$count = 0;
+$count = 0; # Reset counter for row processing
 
-
-while (<FILE>)
-
+# Main loop to read and process each data row from the CSV file
+while (<FILE>) # Read next line from file into $_
 {
+# Remove trailing newline from the line
+chomp $_; # Remove newline character
 
+# Remove quotes and clean the line
+$_ =~ s/\"//; # Remove all double quotes from the line
 
-chomp $_;
+chop $_; # Remove trailing character
 
+# Split the current row into field values
+@Field_Values = split(",",$_); # Create array of values for this row
 
-$_ =~ s/\"//;
-
-
-chop $_;
-
-
-@Field_Values = split(",",$_);
-
-while ($field_count <= $Field_Names_Count )
-
+# Process each field in the current row
+while ($field_count <= $Field_Names_Count ) # Loop through all fields in this row
 {
+# Escape single quotes in field values for SQL safety
+   $Field_Values[$field_count] =~ s/'/\\'/g; # Replace all ' with \'
 
-
-   $Field_Values[$field_count] =~ s/'/\\'/g;
-
-
-         if (length($Field_Values[$field_count]) < 1)
-         
+# Handle empty fields - convert to "0" for initial analysis
+         if (length($Field_Values[$field_count]) < 1) # If field is empty
          {
-            $Field_Values[$field_count] = "0";
-         }
+            $Field_Values[$field_count] = "0"; # Set empty field to "0" temporarily
+         } # End empty field check
 
-
-         if ( $Field_Values[$field_count] =~ m/[a-zA-Z]/)
-         
+# Detect field type: if contains letters, it's varchar
+         if ( $Field_Values[$field_count] =~ m/[a-zA-Z]/) # If field contains any letter
          {
-               $type[$field_count] = "varchar";
+               $type[$field_count] = "varchar"; # Set column type to varchar
                
-
-               if ($length[$field_count] < 'length($Field_Values[$field_count])')
-            
+# Track maximum length for varchar fields
+               if ($length[$field_count] < 'length($Field_Values[$field_count])') # If current value is longer
                {
-                  $length[$field_count] = length($Field_Values[$field_count]);
-               }
-         }
+                  $length[$field_count] = length($Field_Values[$field_count]); # Update max length
+               } # End length check
+         } # End varchar detection
    
-   if ($type[$field_count] ne "varchar")
-   
-   {
-         if ( $Field_Values[$field_count] =~ m/[^a-zA-Z]/)
-   
+# If field doesn't contain letters, check for numeric types
+   if ($type[$field_count] ne "varchar") # If type is not already varchar
+   { # Analyze non-varchar fields for int or decimal
+         # Check if field contains non-letter characters
+         if ( $Field_Values[$field_count] =~ m/[^a-zA-Z]/) # If field has non-letter chars
          {
-            if ($type[$field_count] ne "decimal")
-            
+            if ($type[$field_count] ne "decimal") # If not already decimal
             {
-               $type[$field_count] = "int";
+               $type[$field_count] = "int"; # Tentatively set to int
                
-               if ($length[$field_count] lt 'length($Field_Values[$field_count])')
+               # Track maximum length for int fields
+               if ($length[$field_count] lt 'length($Field_Values[$field_count])') # If current is longer
                {
                   $length[$field_count] = length($Field_Values[$field_count]);
                }
             }
          }
    
-         if ( $Field_Values[$field_count] =~ m/[0-9.]/)
-   
+         # Check for numeric content and decimal points
+         if ( $Field_Values[$field_count] =~ m/[0-9.]/) # If field contains digits or decimal point
          {
+               # Count how many decimal points exist
                @count_periods = split("\\.",$Field_Values[$field_count]);
-               $number_of_periods = $#count_periods;
+               $number_of_periods = $#count_periods; # Get number of decimal points (as array index)
             
-            
-            if ($number_of_periods > 1)
-            
-            {
+            # If more than one decimal point, it's invalid decimal - store as varchar
+            if ($number_of_periods > 1) # More than one decimal point
+            { # This is invalid as a decimal number
    
-            $type[$field_count] = "varchar";
+            $type[$field_count] = "varchar"; # Store as varchar since it's not a valid number
             
          
-               if ($length[$field_count] < 'length($Field_Values[$field_count])')
+               if ($length[$field_count] < 'length($Field_Values[$field_count])') # Track max length
                {
                   $length[$field_count] = length($Field_Values[$field_count]);
                }
    
    
-                  $decimal_length1[$field_count] = "";
-                  $decimal_length2[$field_count] = "";
-               }
+                  $decimal_length1[$field_count] = ""; # Clear decimal length tracking
+                  $decimal_length2[$field_count] = ""; # Clear decimal length tracking
+               } # End multi-period handling
    
-            if ($number_of_periods == 1)
-            
-            {
-               $type[$field_count] = "decimal";
+            # If exactly one decimal point, it's a valid decimal number
+            if ($number_of_periods == 1) # Exactly one decimal point
+            { # Valid decimal number
+               $type[$field_count] = "decimal"; # Set type to decimal
+               # Split the number into integer and fractional parts
                @split_decimal_number = split("\\.",$Field_Values[$field_count]);
                
-               if ($decimal_length1[$field_count] lt length($split_decimal_number[0]))
-               
+               # Track max digits before decimal point
+               if ($decimal_length1[$field_count] lt length($split_decimal_number[0])) # If this part is longer
                {
                   $decimal_length1[$field_count] = length($split_decimal_number[0]);
                }
                
-               if ($decimal_length2[$field_count] lt length($split_decimal_number[1]))
-               
+               # Track max digits after decimal point
+               if ($decimal_length2[$field_count] lt length($split_decimal_number[1])) # If this part is longer
                {
                   $decimal_length2[$field_count] = length($split_decimal_number[1]);
                }
                            
             }
    
-         }
+         } # End decimal handling
                   
-         if ( $Field_Values[$field_count] =~ m/[^0-9.]/)
-         
-         {
-               $type[$field_count] = "varchar";
+         # If field contains non-numeric characters, it must be varchar
+         if ( $Field_Values[$field_count] =~ m/[^0-9.]/) # If field contains chars other than digits and dots
+         { # This can't be a valid number
+               $type[$field_count] = "varchar"; # Must be varchar if it has non-numeric chars
    
-               if ($length[$field_count] lt 'length($Field_Values[$field_count])')
-            
+               # Track max length for varchar
+               if ($length[$field_count] lt 'length($Field_Values[$field_count])') # If current is longer
                {
                   $length[$field_count] = length($Field_Values[$field_count]);
                }
    
-         }
+         } # End non-numeric character check
    
    }
    
-   else
-   
-   {         
-   
-               if ($length[$field_count] < length($Field_Values[$field_count]))
-            
+   else # If type is already varchar (contains letters)
+   { # Just track the max length
+               # Track maximum length for varchar fields
+               if ($length[$field_count] < length($Field_Values[$field_count])) # If current value is longer
                {
                   $length[$field_count] = length($Field_Values[$field_count]);
                }
@@ -220,69 +208,70 @@ while ($field_count <= $Field_Names_Count )
    }
    
    
-   
-         if (length($Field_Values[$field_count]) < 1)
-         
+         # Clear empty fields (reset from "0" to empty string for final output)
+         if (length($Field_Values[$field_count]) < 1) # If field is empty
          {
-            $Field_Values[$field_count] = "";
-         }
+            $Field_Values[$field_count] = ""; # Set to empty string for SQL
+         } # End empty field reset
 
    
-      if ($field_count == 0)
+      # Generate INSERT statement values - handle first field specially
+      if ($field_count == 0) # If this is the first field
+      { # Start the INSERT statement with first value
+         # Print INSERT statement header with first value
+         print VALUES "insert into $TABLE_NAME ($Columns_Values) \nvalues ('$Field_Values[$field_count]'"; # Write INSERT beginning
+      } # End first field
       
-      {
-         print VALUES "insert into $TABLE_NAME ($Columns_Values) \nvalues ('$Field_Values[$field_count]'";
-      }
-      
-         if ($field_count > 0 && $field_count < $Field_Names_Count_Plus_One)
-         
+         # For middle and remaining fields, add values with commas
+         if ($field_count > 0 && $field_count < $Field_Names_Count_Plus_One) # If not first and not beyond end
          {
-            print VALUES ", '$Field_Values[$field_count]'";
-         }
+            print VALUES ", '$Field_Values[$field_count]'"; # Append next value with comma
+         } # End value appending
          
-      $field_count++;
-      }
+      $field_count++; # Move to next field
+      } # End field loop for this row
    
-         if ($field_count == $Field_Names_Count_Plus_One)
-         
+         # When all fields for a row are processed, close the INSERT statement
+         if ($field_count == $Field_Names_Count_Plus_One) # If we've processed all fields
          {
-            $field_count = 0;
-            $count++;
-            print VALUES ");\n";
-         }
+            $field_count = 0; # Reset counter for next row
+            $count++; # Increment row counter
+            print VALUES ");\n"; # Close the INSERT statement
+         } # End row processing
    
 
 
 }
 
-print TABLE "\n\nCREATE TABLE `$TABLE_NAME` (\n";
+# Generate the CREATE TABLE SQL statement
+print TABLE "\n\nCREATE TABLE `$TABLE_NAME` (\n"; # Start CREATE TABLE statement
 
-$count_columns = 0;
+$count_columns = 0; # Initialize counter for column iteration
 
-
-while ($count_columns < $Field_Names_Count_Plus_One)
+# Loop through each column to write the table schema
+while ($count_columns < $Field_Names_Count_Plus_One) # For each column
 
 {
-   if (length($Field_Names[$count_columns]) > 0)
+   if (length($Field_Names[$count_columns]) > 0) # If column name exists
    
    {
-      if ($type[$count_columns] =~ "decimal")
+      if ($type[$count_columns] =~ "decimal") # If column type is decimal
       
       {
-         $decimal_field_length = $decimal_length1[$count_columns] + $decimal_length2[$count_columns];
-         print TABLE " `$Field_Names[$count_columns]` $type[$count_columns] ($decimal_field_length,$decimal_length2[$count_columns])";
+         $decimal_field_length = $decimal_length1[$count_columns] + $decimal_length2[$count_columns]; # Total digits
+         print TABLE " `$Field_Names[$count_columns]` $type[$count_columns] ($decimal_field_length,$decimal_length2[$count_columns])"; # DECIMAL(total, scale)
       }
       
-      else
+      else # Not a decimal column
       
       {
-         print TABLE " `$Field_Names[$count_columns]` $type[$count_columns] ($length[$count_columns])";
+         print TABLE " `$Field_Names[$count_columns]` $type[$count_columns] ($length[$count_columns])"; # Write column with type and length
       }
    
-      if ($count_columns < $Field_Names_Count)
+      if ($count_columns < $Field_Names_Count) # If not the last column
       
       {
-         print TABLE ",\n";
+         print TABLE ",\n"; # Add comma and newline after column definition
       }
       
       if ($count_columns == $Field_Names_Count_Plus_One)
@@ -293,19 +282,19 @@ while ($count_columns < $Field_Names_Count_Plus_One)
       
    }
 
-$count_columns++;
+$count_columns++; # Move to next column
 
-}
+} # End column loop
 
-print "Processed $column_count columns and $count lines.\n";
+print "Processed $column_count columns and $count lines.\n"; # Print stats to console
 
-print TABLE "\n) ENGINE=$DATABASE_ENGINE DEFAULT CHARSET=$DEFAULT_CHARSET\n";
+print TABLE "\n) ENGINE=$DATABASE_ENGINE DEFAULT CHARSET=$DEFAULT_CHARSET\n"; # Close table definition
 
-print TABLE "\n\n";
+print TABLE "\n\n"; # Add spacing
 
-close(FILE);
+close(FILE); # Close input CSV file
 
-exit;
+exit; # Exit the script
 
 
 print "Process completed.\n";
